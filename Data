@@ -4,97 +4,120 @@
 #include <map>
 #include <algorithm>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+// Проверка високосного года
 bool isLeapYear(int year) {
     return (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0));
 }
 
+// Приведение строки к нижнему регистру
 std::string to_lower(const std::string& s) {
     std::string res = s;
-    std::transform(res.begin(), res.end(), res.begin(), [](unsigned char c){ return std::tolower(c); });
+    std::transform(res.begin(), res.end(), res.begin(),
+                   [](unsigned char c){ return std::tolower(c); });
     return res;
 }
 
 // Карта для русских месяцев (именительный и родительный падеж)
-const std::map<std::string, int> months = {
-    {"январь", 1},   {"января", 1},
-    {"февраль", 2},  {"февраля", 2},
-    {"март", 3},     {"марта", 3},
-    {"апрель", 4},   {"апреля", 4},
-    {"май", 5},      {"мая", 5},
-    {"июнь", 6},     {"июня", 6},
-    {"июль", 7},     {"июля", 7},
-    {"август", 8},   {"августа", 8},
-    {"сентябрь", 9}, {"сентября", 9},
-    {"октябрь", 10}, {"октября", 10},
-    {"ноябрь", 11},  {"ноября", 11},
-    {"декабрь", 12}, {"декабря", 12}
+static const std::map<std::string,int> months_ru = {
+    {"январь",1}, {"января",1},
+    {"февраль",2}, {"февраля",2},
+    {"март",3},    {"марта",3},
+    {"апрель",4},  {"апреля",4},
+    {"май",5},     {"мая",5},
+    {"июнь",6},    {"июня",6},
+    {"июль",7},    {"июля",7},
+    {"август",8},  {"августа",8},
+    {"сентябрь",9},{"сентября",9},
+    {"октябрь",10},{"октября",10},
+    {"ноябрь",11}, {"ноября",11},
+    {"декабрь",12},{"декабря",12}
+};
+
+// Карта для английских месяцев (полные названия)
+static const std::map<std::string,int> months_en = {
+    {"january",1}, {"february",2}, {"march",3},    {"april",4},
+    {"may",5},     {"june",6},     {"july",7},     {"august",8},
+    {"september",9},{"october",10},{"november",11},{"december",12}
 };
 
 bool checkDate(const std::string& date) {
     std::smatch m;
-    // dd.mm.yyyy, dd/mm/yyyy, dd-mm-yyyy
-    std::regex date1(R"(^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$)");
-    // yyyy.mm.dd
-    std::regex date2(R"(^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$)");
-    // 20 января 1806 (или любой падеж)
-    std::regex date_rus(R"(^\s*(\d{1,2})\s+([А-Яа-яёЁ]+)\s+(\d{4})\s*$)");
-    // July 25, 1924
-    std::regex date_eng(R"(^([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})$)");
+    // Форматы: dd.mm.yyyy, dd/mm/yyyy, dd-mm-yyyy
+    std::regex regex1(R"(^\s*(\d{1,2})[./-](\d{1,2})[./-](\d{4})\s*$)");
+    // Формат: yyyy.mm.dd, yyyy/mm/dd, yyyy-mm-dd
+    std::regex regex2(R"(^\s*(\d{4})[./-](\d{1,2})[./-](\d{1,2})\s*$)");
+    // Русский текстовый формат: "20 января 1806"
+    std::regex regex_ru(R"(^\s*(\d{1,2})\s+([А-Яа-яЁё]+)\s+(\d{4})\s*$)");
+    // Английский текстовый формат: "July 25, 1924"
+    std::regex regex_en(R"(^\s*([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})\s*$)");
 
-    // dd.mm.yyyy
-    if (std::regex_match(date, m, date1)) {
-        int day = std::stoi(m[1]), mon = std::stoi(m[2]), year = std::stoi(m[3]);
-        int mdays[] = {31, (isLeapYear(year)?29:28), 31,30,31,30,31,31,30,31,30,31};
-        if (mon < 1 || mon > 12) return false;
-        if (day < 1 || day > mdays[mon-1]) return false;
-        return true;
+    int day, mon, year;
+    int mdays[12];
+
+    // 1) dd.mm.yyyy и аналоги
+    if (std::regex_match(date, m, regex1)) {
+        day  = std::stoi(m[1]);
+        mon  = std::stoi(m[2]);
+        year = std::stoi(m[3]);
     }
-    // yyyy.mm.dd
-    if (std::regex_match(date, m, date2)) {
-        int year = std::stoi(m[1]), mon = std::stoi(m[2]), day = std::stoi(m[3]);
-        int mdays[] = {31, (isLeapYear(year)?29:28), 31,30,31,30,31,31,30,31,30,31};
-        if (mon < 1 || mon > 12) return false;
-        if (day < 1 || day > mdays[mon-1]) return false;
-        return true;
+    // 2) yyyy.mm.dd и аналоги
+    else if (std::regex_match(date, m, regex2)) {
+        year = std::stoi(m[1]);
+        mon  = std::stoi(m[2]);
+        day  = std::stoi(m[3]);
     }
-    // Русский формат: 20 января 1806 (поддержка регистра и падежей)
-    if (std::regex_match(date, m, date_rus)) {
-        int day = std::stoi(m[1]);
-        std::string month = to_lower(m[2]);
-        int year = std::stoi(m[3]);
-        auto it = months.find(month);
-        if (it == months.end()) {
-            std::cout << "Месяц \"" << month << "\" не распознан." << std::endl;
-            return false;
-        }
-        int mon = it->second;
-        int mdays[] = {31, (isLeapYear(year)?29:28), 31,30,31,30,31,31,30,31,30,31};
-        if (day < 1 || day > mdays[mon-1]) return false;
-        return true;
+    // 3) Русский текстовый формат
+    else if (std::regex_match(date, m, regex_ru)) {
+        day  = std::stoi(m[1]);
+        std::string month_str = to_lower(m[2]);
+        year = std::stoi(m[3]);
+        auto it = months_ru.find(month_str);
+        if (it == months_ru.end()) return false;
+        mon = it->second;
     }
-    // English: July 25, 1924
-    std::map<std::string, int> months_en = {
-        {"january", 1}, {"february", 2}, {"march", 3}, {"april", 4}, {"may", 5}, {"june", 6},
-        {"july", 7}, {"august", 8}, {"september", 9}, {"october", 10}, {"november", 11}, {"december", 12}
-    };
-    if (std::regex_match(date, m, date_eng)) {
-        std::string month = to_lower(m[1]);
-        int day = std::stoi(m[2]);
-        int year = std::stoi(m[3]);
-        auto it = months_en.find(month);
-        if (it == months_en.end()) {
-            std::cout << "Month \"" << month << "\" not recognized." << std::endl;
-            return false;
-        }
-        int mon = it->second;
-        int mdays[] = {31, (isLeapYear(year)?29:28), 31,30,31,30,31,31,30,31,30,31};
-        if (day < 1 || day > mdays[mon-1]) return false;
-        return true;
+    // 4) Английский текстовый формат
+    else if (std::regex_match(date, m, regex_en)) {
+        std::string month_str = to_lower(m[1]);
+        day  = std::stoi(m[2]);
+        year = std::stoi(m[3]);
+        auto it = months_en.find(month_str);
+        if (it == months_en.end()) return false;
+        mon = it->second;
     }
-    return false;
+    else {
+        return false; // не подошёл ни один формат
+    }
+
+    // Проверяем диапазоны
+    if (mon < 1 || mon > 12) return false;
+    mdays[0]  = 31;
+    mdays[1]  = isLeapYear(year) ? 29 : 28;
+    mdays[2]  = 31;
+    mdays[3]  = 30;
+    mdays[4]  = 31;
+    mdays[5]  = 30;
+    mdays[6]  = 31;
+    mdays[7]  = 31;
+    mdays[8]  = 30;
+    mdays[9]  = 31;
+    mdays[10] = 30;
+    mdays[11] = 31;
+
+    if (day < 1 || day > mdays[mon - 1]) return false;
+    return true;
 }
 
 int main() {
+#ifdef _WIN32
+    // Переключаем консоль в UTF-8
+    SetConsoleCP(CP_UTF8);
+    SetConsoleOutputCP(CP_UTF8);
+#endif
+
     std::string date;
     std::cout << "Введите дату: ";
     std::getline(std::cin, date);
