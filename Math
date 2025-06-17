@@ -1,0 +1,46 @@
+#include <iostream>
+#include <string>
+#include <regex>
+#include <vector>
+
+int main() {
+    std::string expr;
+    std::cout << "Введите математическое выражение: ";
+    std::getline(std::cin, expr);
+
+    // Токены: числа, переменные, функции, константы, операторы, скобки
+    std::regex number(R"(\d+\.\d+|\d+)");
+    std::regex variable(R"([a-zA-Z_][a-zA-Z_0-9]*)");
+    std::regex constant(R"(pi|e|sqrt2|ln2|ln10)");
+    std::regex function(R"(sin|cos|tg|ctg|tan|cot|sinh|cosh|th|cth|tanh|coth|ln|log|log2|exp|sqrt|cbrt|abs|sign)");
+    std::regex oper(R"([\^*/+\-])");
+    std::regex paren(R"([\(\)])");
+
+    std::string::const_iterator searchStart(expr.cbegin());
+    std::smatch m;
+
+    while (searchStart != expr.cend()) {
+        if (std::regex_search(searchStart, expr.cend(), m, function) && m.position() == 0) {
+            std::cout << "[function] " << m.str() << std::endl;
+        } else if (std::regex_search(searchStart, expr.cend(), m, constant) && m.position() == 0) {
+            std::cout << "[constant] " << m.str() << std::endl;
+        } else if (std::regex_search(searchStart, expr.cend(), m, number) && m.position() == 0) {
+            std::cout << "[number] " << m.str() << std::endl;
+        } else if (std::regex_search(searchStart, expr.cend(), m, variable) && m.position() == 0) {
+            std::cout << "[variable] " << m.str() << std::endl;
+        } else if (std::regex_search(searchStart, expr.cend(), m, oper) && m.position() == 0) {
+            std::cout << "[operator] " << m.str() << std::endl;
+        } else if (std::regex_search(searchStart, expr.cend(), m, paren) && m.position() == 0) {
+            std::cout << "[paren] " << m.str() << std::endl;
+        } else if (isspace(*searchStart)) {
+            ++searchStart; // пропускаем пробелы
+            continue;
+        } else {
+            std::cout << "Неизвестный токен: " << *searchStart << std::endl;
+            ++searchStart;
+            continue;
+        }
+        searchStart += m.length();
+    }
+    return 0;
+}
