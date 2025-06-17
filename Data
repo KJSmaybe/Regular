@@ -2,15 +2,30 @@
 #include <string>
 #include <regex>
 
+bool isLeapYear(int year) {
+    return (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0));
+}
+
+bool checkDate(const std::string& date) {
+    std::regex date_regex(R"(^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$)");
+    std::smatch m;
+    if (std::regex_match(date, m, date_regex)) {
+        int day = std::stoi(m[1]), mon = std::stoi(m[2]), year = std::stoi(m[3]);
+        if (mon < 1 || mon > 12) return false;
+        int mdays[] = {31, (isLeapYear(year) ? 29 : 28), 31,30,31,30,31,31,30,31,30,31};
+        if (day < 1 || day > mdays[mon-1]) return false;
+        return true;
+    }
+    // Добавить остальные форматы и языковые проверки по заданию!
+    return false;
+}
+
 int main() {
     std::string date;
     std::cout << "Введите дату: ";
     std::getline(std::cin, date);
 
-  
-    std::regex pattern(R"(^(\d{1,2}[./-]\d{1,2}[./-]\d{4}|[A-Za-z]+\s\d{1,2},\s\d{4}|\d{4}[./-]\d{1,2}[./-]\d{1,2}|\d{1,2}\s[а-яА-Яa-zA-Z]+\s\d{4})$)");
-
-    if (std::regex_match(date, pattern))
+    if (checkDate(date))
         std::cout << "Корректная дата!" << std::endl;
     else
         std::cout << "Некорректная дата." << std::endl;
