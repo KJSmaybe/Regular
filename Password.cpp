@@ -1,32 +1,28 @@
 #include <iostream>
 #include <string>
 #include <regex>
+#include <set>
+
+bool has_two_diff_specials(const std::string& str) {
+    std::set<char> specials;
+    for (char c : str) {
+        if (std::string("^$%*@#!?'").find(c) != std::string::npos)
+            specials.insert(c);
+    }
+    return specials.size() >= 2;
+}
 
 int main() {
-    std::string pwd;
+    std::string password;
     std::cout << "Введите пароль: ";
-    std::getline(std::cin, pwd);
+    std::getline(std::cin, password);
 
-    // Только латинские буквы, цифры, спецсимволы ^$%*@#!?'
-    std::regex allowed("^[A-Za-z0-9^$%*@#!?']+$");
-    // Минимум 8 символов
-    if (!std::regex_match(pwd, allowed) || pwd.size() < 8) {
-        std::cout << "Некорректно (запрещённые символы или слишком коротко)!" << std::endl;
-        return 0;
-    }
-    // Минимум одна строчная, одна заглавная, одна цифра, один спецсимвол
-    std::regex re_low("[a-z]");
-    std::regex re_up("[A-Z]");
-    std::regex re_dig("\\d");
-    std::regex re_spec("[\\^\\$%\\*@#!\\?']");
-    // Нет двух одинаковых подряд
-    std::regex re_dup("(.)\\1");
+    std::regex pattern(R"(^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\^$%*@#!\?'])(?!.*(.)\1)[A-Za-z\d\^$%*@#!\?']{8,}$)");
 
-    if (!std::regex_search(pwd, re_low)) std::cout << "Нет строчной буквы!" << std::endl;
-    else if (!std::regex_search(pwd, re_up)) std::cout << "Нет заглавной буквы!" << std::endl;
-    else if (!std::regex_search(pwd, re_dig)) std::cout << "Нет цифры!" << std::endl;
-    else if (!std::regex_search(pwd, re_spec)) std::cout << "Нет спецсимвола!" << std::endl;
-    else if (std::regex_search(pwd, re_dup)) std::cout << "Есть повторяющиеся символы!" << std::endl;
-    else std::cout << "Корректно!" << std::endl;
+    if (std::regex_match(password, pattern) && has_two_diff_specials(password))
+        std::cout << "Корректный пароль!" << std::endl;
+    else
+        std::cout << "Некорректный пароль." << std::endl;
+
     return 0;
 }
