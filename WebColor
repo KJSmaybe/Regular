@@ -1,32 +1,150 @@
 #include <iostream>
 #include <string>
-#include <regex>
+#include <algorithm>
+#include <cctype>
+#include <vector>
+#include <sstream>
+#include <iomanip>
 
-bool check_rgb(const std::string& color) {
-    std::regex rgb_int(R"(^rgb\(\s*(25[0-5]|2[0-4]\d|1?\d{1,2})\s*,\s*(25[0-5]|2[0-4]\d|1?\d{1,2})\s*,\s*(25[0-5]|2[0-4]\d|1?\d{1,2})\s*\)$)");
-    std::regex rgb_pct(R"(^rgb\(\s*(100|[1-9]?\d)%\s*,\s*(100|[1-9]?\d)%\s*,\s*(100|[1-9]?\d)%\s*\)$)");
-    return std::regex_match(color, rgb_int) || std::regex_match(color, rgb_pct);
+// Удаляем пробелы слева и справа
+static inline std::string trim(const std::string& s) {
+    auto l = s.find_first_not_of(" \t\n\r");
+    if (l == std::string::npos) return "";
+    auto r = s.find_last_not_of(" \t\n\r");
+    return s.substr(l, r - l + 1);
 }
 
-bool check_hex(const std::string& color) {
-    std::regex hex(R"(^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$)");
-    return std::regex_match(color, hex);
+// Разбиваем строку по разделителю
+static inline std::vector<std::string> split(const std::string& s, char delim) {
+    std::vector<std::string> elems;
+    std::stringstream ss(s);
+    std::string item;
+    while (std::getline(ss, item, delim)) {
+        elems.push_back(trim(item));
+    }
+    return elems;
 }
 
-bool check_hsl(const std::string& color) {
-    std::regex hsl(R"(^hsl\(\s*(360|3[0-5]\d|[12]?\d{1,2}|[0-9]{1,2})\s*,\s*(100|[1-9]?\d)%\s*,\s*(100|[1-9]?\d)%\s*\)$)");
-    return std::regex_match(color, hsl);
+// Проверяем, что строка — целое число в диапазоне [min_value, max_value]
+bool is_int_in_range(const std::string& val, int min_value, int max_value) {
+    if (val.empty() || !std::all_of(val.begin(), val.end(), ::isdigit))
+        return false;
+    int num = std::stoi(val);
+    return num >= min_value && num <= max_value;
+}
+
+// Проверяем процентную форму "0%" — "100%"
+bool is_percentage(const std::string& val) {
+    if (val.size() < 2 || val.back() != '%')
+        return false;
+    return is_int_in_range(val.substr(0, val.size() - 1), 0, 100);
+}
+
+// Проверяем hex-формат: #abc или #a1b2c3
+bool is_hex_color(const std::string& s) {
+    std::string str = trim(s);
+    if (str.size() < 4 || str[0] != '#')
+        return false;
+    std::string body = str.substr(1);
+    if (body.size() != 3 && body.size() != 6)
+        return false;
+    for (char c : body) {
+        if (!std::isxdigit(static_cast<unsigned char>(c)))
+            return false;
+    }
+    return true;
+}
+
+// Проверяем rgb(r, g, b) с числами 0-255 или процентами 0%-100%
+bool is_rgb_color(const std::string& s) {
+    std::string str = trim(s);
+    if (str.size() < 5)
+        return false;
+
+    std::string prefix(str.begin(), str.begin() + 4);
+    if (!(prefix == "rgb(" || prefix == "RGB(" || prefix == "Rgb("))
+        return false;
+    if (str.back() != ')')
+        return false;
+
+    std::string body = str.substr(4, str.size() - 5);
+    auto parts = split(body, ',');
+    if (parts.size() != 3)
+        return false;
+
+    bool hasInt = false, hasPct = false;
+    for (auto& p : parts) {
+        if (is_percentage(p)) {
+            hasPct = true;
+        }
+        else if (is_int_in_range(p, 0, 255)) {
+            hasInt = true;
+        }
+        else {
+            return false;  // ни то ни другое
+        }
+        // если оба типа встретились — сразу reject
+        if (hasInt && hasPct)
+            return false;
+    }
+
+    // всё OK: либо все числа, либо все проценты
+    return true;
+}
+
+
+
+// Проверяем hsl(h, s, l) с h:0-360, s и l в процентах 0%-100%
+bool is_hsl_color(const std::string& s) {
+    std::string str = trim(s);
+    if (str.size() < 5)
+        return false;
+
+    // Берём первые 4 символа
+    std::string prefix(str.begin(), str.begin() + 4);
+
+    // Проверяем, что это один из разрешённых префиксов
+    if (!(prefix == "hsl(" || prefix == "HSL(" || prefix == "Hsl("))
+        return false;
+
+    if (str.back() != ')')
+        return false;
+
+    std::string body = str.substr(4, str.size() - 5);
+    auto parts = split(body, ',');
+    if (parts.size() != 3)
+        return false;
+
+    // Первый — 0–360
+    if (!is_int_in_range(parts[0], 0, 360))
+        return false;
+    // Второй и третий — проценты 0%–100%
+    if (!is_percentage(parts[1]) || !is_percentage(parts[2]))
+        return false;
+
+    return true;
+}
+
+// Главная проверка
+bool is_valid_web_color(const std::string& s) {
+    return is_hex_color(s) || is_rgb_color(s) || is_hsl_color(s);
 }
 
 int main() {
-    std::string color;
-    std::cout << "Введите web-цвет: ";
-    std::getline(std::cin, color);
-
-    if (check_rgb(color) || check_hex(color) || check_hsl(color))
-        std::cout << "Корректный web-цвет!" << std::endl;
-    else
-        std::cout << "Некорректный web-цвет." << std::endl;
-
+    setlocale(LC_ALL, "RUS");
+    std::string line;
+    std::cout << "Введите web-цвет (или пустую строку для выхода):\n";
+    while (true) {
+        std::getline(std::cin, line);
+        line = trim(line);
+        if (line.empty()) break;
+        bool ok = is_valid_web_color(line);
+        std::cout
+            << "'" << line << "' → "
+            << (ok ? "валидный" : "НЕвалидный")
+            << "\n\n";
+        std::cout << "Ещё цвет (или пустая строка):\n";
+    }
     return 0;
 }
+
