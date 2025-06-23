@@ -1,108 +1,196 @@
+#ifdef _WIN32
+#include <windows.h>
+#include <io.h>
+#include <fcntl.h>
+#endif
+
+#include <locale>
 #include <iostream>
 #include <string>
+#include <algorithm>
 #include <cctype>
 #include <vector>
-#include <algorithm>
+#include <sstream>
+#include <map>
 
-// Помощники
-static int parseInt(const std::string& s, size_t pos, size_t len) {
-    if (len==0) return -1;
-    int v=0;
-    for (size_t i=0;i<len;++i) {
-        if (!std::isdigit(s[pos+i])) return -1;
-        v = v*10 + (s[pos+i]-'0');
+using std::wstring;
+using std::wcin;
+using std::wcout;
+using std::getline;
+using std::vector;
+using std::map;
+
+// trim для wstring
+static inline wstring trim(const wstring& s) {
+    size_t l = s.find_first_not_of(L" \t\r\n");
+    if (l == wstring::npos) return L"";
+    size_t r = s.find_last_not_of(L" \t\r\n");
+    return s.substr(l, r - l + 1);
+}
+
+// split по одному символу-разделителю
+static inline vector<wstring> split(const wstring& s, wchar_t sep) {
+    vector<wstring> out;
+    std::wistringstream ss(s);
+    wstring cur;
+    while (std::getline(ss, cur, sep)) {
+        out.push_back(trim(cur));
     }
-    return v;
+    return out;
 }
-static std::vector<std::string> split(const std::string& s, const std::string& delims) {
-    std::vector<std::string> res;
-    size_t i=0,n=s.size();
-    while (i<n) {
-        while (i<n && delims.find(s[i])!=std::string::npos) ++i;
-        if (i>=n) break;
-        size_t j=i;
-        while (j<n && delims.find(s[j])==std::string::npos) ++j;
-        res.emplace_back(s.substr(i,j-i));
-        i=j;
+
+// проверка, что строка — неотрицательное целое [minv..maxv]
+bool is_int_in_range(const wstring& tok, int minv, int maxv) {
+    if (tok.empty()) return false;
+    for (wchar_t c : tok) {
+        if (!iswdigit(c)) return false;
     }
-    return res;
-}
-static bool iequals(const std::string& a, const std::string& b) {
-    if (a.size()!=b.size()) return false;
-    for (size_t i=0;i<a.size();++i)
-        if (std::tolower(a[i])!=std::tolower(b[i])) return false;
-    return true;
+    int x = std::stoi(tok);
+    return x >= minv && x <= maxv;
 }
 
-// Проверка
-bool isValidDate(const std::string& raw) {
-    size_t b=0,e=raw.size();
-    while (b<e && std::isspace(raw[b])) ++b;
-    while (e>b && std::isspace(raw[e-1])) --e;
-    std::string s = raw.substr(b,e-b);
-    if (s.empty()) return false;
+// високосный год
+bool is_leap(int y) {
+    return (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
+}
 
-    // Numeric: dd.mm.yyyy или yyyy-mm-dd и т.п.
-    static const std::string D=".-/";
-    auto tok = split(s,D);
-    if (tok.size()==3) {
-        bool firstYear = (tok[0].size()==4 && parseInt(tok[0],0,4)>=0);
-        bool thirdYear = (tok[2].size()==4 && parseInt(tok[2],0,4)>=0);
-        if (firstYear ^ thirdYear) {
-            int day,mon,yr;
-            if (firstYear) {
-                yr= parseInt(tok[0],0,tok[0].size());
-                mon= parseInt(tok[1],0,tok[1].size());
-                day= parseInt(tok[2],0,tok[2].size());
-            } else {
-                day= parseInt(tok[0],0,tok[0].size());
-                mon= parseInt(tok[1],0,tok[1].size());
-                yr=  parseInt(tok[2],0,tok[2].size());
-            }
-            if (yr<0||mon<1||mon>12||day<1||day>31) return false;
-            return true;
+// дней в месяце m для года y
+int days_in_month(int m, int y) {
+    static const int mdays[] = { 0,31,28,31,30,31,30,31,31,30,31,30,31 };
+    if (m < 1 || m>12) return 0;
+    if (m == 2 && is_leap(y)) return 29;
+    return mdays[m];
+}
+
+// цифровые форматы d.m.y, d/m/y, d-m-y и зеркально y.m.d и т.д.
+bool check_numeric(const wstring& s) {
+    for (wchar_t sep : {L'.', L'/', L'-'}) {
+        if (s.find(sep) == wstring::npos) continue;
+        auto p = split(s, sep);
+        if (p.size() != 3) continue;
+        // d-m-y
+        if (is_int_in_range(p[0], 1, 31)
+            && is_int_in_range(p[1], 1, 12)
+            && is_int_in_range(p[2], 0, 9999))
+        {
+            int d = std::stoi(p[0]), m = std::stoi(p[1]), y = std::stoi(p[2]);
+            if (d <= days_in_month(m, y)) return true;
+        }
+        // y-m-d
+        if (is_int_in_range(p[0], 0, 9999)
+            && is_int_in_range(p[1], 1, 12)
+            && is_int_in_range(p[2], 1, 31))
+        {
+            int y = std::stoi(p[0]), m = std::stoi(p[1]), d = std::stoi(p[2]);
+            if (d <= days_in_month(m, y)) return true;
         }
     }
-
-    // Русский: "14 января 1806"
-    auto w = split(s," ,");
-    if (w.size()==3) {
-        int day = parseInt(w[0],0,w[0].size());
-        int yr  = parseInt(w[2],0,w[2].size());
-        if (day<1||day>31||yr<0) return false;
-        static const std::vector<std::string> rus = {
-            "января","февраля","марта","апреля","мая","июня",
-            "июля","августа","сентября","октября","ноября","декабря"
-        };
-        for (auto& m: rus) if (iequals(w[1],m)) return true;
-    }
-
-    // Английский: "July 25, 1924" или "Sep 14, 1995"
-    if (w.size()==3 && w[1].back()==',') {
-        std::string mon = w[0];
-        int day = parseInt(w[1],0,w[1].size()-1);
-        int yr  = parseInt(w[2],0,w[2].size());
-        if (day<1||day>31||yr<0) return false;
-        static const std::vector<std::string> engFull = {
-            "January","February","March","April","May","June",
-            "July","August","September","October","November","December"
-        };
-        static const std::vector<std::string> engAbbr = {
-            "Jan","Feb","Mar","Apr","May","Jun",
-            "Jul","Aug","Sep","Oct","Nov","Dec"
-        };
-        for (auto& m: engFull) if (iequals(mon,m)) return true;
-        for (auto& m: engAbbr) if (iequals(mon,m)) return true;
-    }
-
     return false;
 }
 
-int main(){
-    std::string line;
-    std::cout<<"Введите дату: ";
-    std::getline(std::cin,line);
-    std::cout<<(isValidDate(line)?"OK\n":"FAIL\n");
-    return 0;
+// русский формат "день месяц_рус год"
+bool check_rus(const wstring& s) {
+    std::wistringstream ss(s);
+    wstring day, mon, year;
+    if (!(ss >> day >> mon >> year)) return false;
+    if (!is_int_in_range(day, 1, 31) || !is_int_in_range(year, 0, 9999))
+        return false;
+
+    static const map<wstring, int> mon_ru = {
+        {L"января",1},{L"февраля",2},{L"марта",3},{L"апреля",4},
+        {L"мая",5},{L"июня",6},{L"июля",7},{L"августа",8},
+        {L"сентября",9},{L"октября",10},{L"ноября",11},{L"декабря",12}
+    };
+    auto it = mon_ru.find(mon);
+    if (it == mon_ru.end()) return false;
+
+    int d = std::stoi(day), m = it->second, y = std::stoi(year);
+    return d <= days_in_month(m, y);
 }
 
+// английские форматы: MonthName Day, Year  или  Year, MonthName Day
+bool check_eng(const wstring& s) {
+    static const map<wstring, int> mon_en = {
+        {L"january",1},{L"february",2},{L"march",3},{L"april",4},
+        {L"may",5},{L"june",6},{L"july",7},{L"august",8},
+        {L"september",9},{L"october",10},{L"november",11},{L"december",12},
+        {L"jan",1},{L"feb",2},{L"mar",3},{L"apr",4},
+        {L"may",5},{L"jun",6},{L"jul",7},{L"aug",8},
+        {L"sep",9},{L"oct",10},{L"nov",11},{L"dec",12}
+    };
+    size_t pos = s.find(L',');
+    if (pos == wstring::npos) return false;
+    wstring L = trim(s.substr(0, pos));
+    wstring R = trim(s.substr(pos + 1));
+
+    // MonthName Day, Year
+    {
+        size_t sp = L.rfind(L' ');
+        if (sp != wstring::npos) {
+            wstring mname = L.substr(0, sp);
+            wstring day = L.substr(sp + 1);
+            wstring year = R;
+            std::transform(mname.begin(), mname.end(), mname.begin(), ::towlower);
+            auto it = mon_en.find(mname);
+            if (it != mon_en.end()
+                && is_int_in_range(day, 1, 31)
+                && is_int_in_range(year, 0, 9999))
+            {
+                int d = std::stoi(day),
+                    m = it->second,
+                    y = std::stoi(year);
+                if (d <= days_in_month(m, y))
+                    return true;
+            }
+        }
+    }
+    // Year, MonthName Day
+    if (is_int_in_range(L, 0, 9999)) {
+        size_t sp = R.find(L' ');
+        if (sp != wstring::npos) {
+            wstring mname = R.substr(0, sp);
+            wstring day = R.substr(sp + 1);
+            std::transform(mname.begin(), mname.end(), mname.begin(), ::towlower);
+            auto it = mon_en.find(mname);
+            if (it != mon_en.end() && is_int_in_range(day, 1, 31)) {
+                int d = std::stoi(day),
+                    m = it->second,
+                    y = std::stoi(L);
+                if (d <= days_in_month(m, y))
+                    return true;
+            }
+        }
+    }
+    return false;
+}
+
+// Общая проверка
+bool is_valid_date(const wstring& s) {
+    wstring t = trim(s);
+    return check_numeric(t)
+        || check_rus(t)
+        || check_eng(t);
+}
+
+int main() {
+    // 1) Системная локаль из окружения (для Linux/Mac UTF-8 хватает этого)
+    std::locale::global(std::locale(""));
+
+#ifdef _WIN32
+    // 2) В Windows переводим консоль в UTF-8 и ставим wide-режим
+    SetConsoleCP(CP_UTF8);
+    SetConsoleOutputCP(CP_UTF8);
+    _setmode(_fileno(stdin), _O_U16TEXT);
+    _setmode(_fileno(stdout), _O_U16TEXT);
+#endif
+
+    wstring line;
+    wcout << L"Введите дату (пустая строка — выход):\n";
+    while (getline(wcin, line)) {
+        if (line.empty()) break;
+        bool ok = is_valid_date(line);
+        wcout << L" → " << (ok ? L"VALID\n\n" : L"INVALID\n\n")
+            << L"Ещё дата (или пустая строка):\n";
+    }
+    return 0;
+}
